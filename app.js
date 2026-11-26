@@ -5,15 +5,17 @@ let currentSection = "home";
 let currentUser = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  loadTheme();
+  loadCurrentUser();
+
   try {
     if (typeof initDatabase === "function") {
       await initDatabase();
     }
   } catch (error) {
-    console.error("Database error:", error);
+    console.error("Database:", error);
   }
 
-  loadCurrentUser();
   showSection("home");
 
   if ("serviceWorker" in navigator && location.protocol === "https:") {
@@ -23,56 +25,35 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 function loadCurrentUser() {
   try {
-    const saved = localStorage.getItem("connecto_user");
-    currentUser = saved ? JSON.parse(saved) : null;
+    currentUser = JSON.parse(localStorage.getItem("connecto_user") || "null");
   } catch {
     currentUser = null;
   }
 
-  const name = currentUser?.name || "زائر CONNECTO";
-  const nameElements = document.querySelectorAll(
-    "#userName, .user-name, [data-user-name]"
-  );
-
-  nameElements.forEach((element) => {
-    element.textContent = name;
-  });
+  document.querySelectorAll("#userName, .user-name, [data-user-name]")
+    .forEach(el => {
+      el.textContent = currentUser?.name || "زائر CONNECTO";
+    });
 }
 
 function showSection(section) {
   currentSection = section;
 
-  document.querySelectorAll(".section").forEach((element) => {
-    element.classList.add("hidden");
+  document.querySelectorAll(".page, .section").forEach(el => {
+    el.classList.remove("active");
+    el.classList.add("hidden");
   });
 
   const target = document.getElementById(section);
 
   if (target) {
+    target.classList.add("active");
     target.classList.remove("hidden");
   }
 
-  document.querySelectorAll("[data-section]").forEach((element) => {
-    element.classList.toggle(
-      "active",
-      element.dataset.section === section
-    );
+  document.querySelectorAll("[data-section]").forEach(el => {
+    el.classList.toggle("active", el.dataset.section === section);
   });
-
-  const title = document.getElementById("pageTitle");
-
-  if (title) {
-    const titles = {
-      home: "الرئيسية",
-      friends: "الأصدقاء",
-      messages: "الرسائل",
-      notifications: "الإشعارات",
-      profile: "الملف الشخصي",
-      settings: "الإعدادات",
-    };
-
-    title.textContent = titles[section] || "CONNECTO";
-  }
 
   if (section === "home") loadPosts();
   if (section === "friends") loadFriends();
@@ -82,66 +63,46 @@ function showSection(section) {
 }
 
 async function publishPost() {
-  const input =
-    $("#postText") ||
-    $("#postContent") ||
-    $("#newPost");
-
-  if (!input) {
-    alert("مربع كتابة المنشور غير موجود.");
-    return;
-  }
+  const input = $("#postContent");
+  if (!input) return alert("مربع المنشور غير موجود.");
 
   const content = input.value.trim();
-
-  if (!content) {
-    alert("اكتب حاجة قبل النشر.");
-    return;
-  }
-
-  if (typeof createPost !== "function") {
-    alert("خدمة المنشورات غير جاهزة.");
-    return;
-  }
+  if (!content) return alert("اكتب منشور الأول.");
 
   try {
+    if (typeof createPost !== "function") {
+      return alert("خدمة المنشورات غير جاهزة.");
+    }
+
     await createPost({
       content,
       author: currentUser?.name || "زائر",
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     });
 
     input.value = "";
     await loadPosts();
-    alert("تم نشر المنشور بنجاح.");
+    alert("تم نشر المنشور بنجاح ❤️");
   } catch (error) {
     console.error(error);
-    alert("حصل خطأ أثناء نشر المنشور.");
+    alert("حصل خطأ أثناء النشر.");
   }
 }
 
 async function loadPosts() {
-  const container =
-    $("#postsContainer") ||
-    $("#postsList") ||
-    $("#posts");
-
-  if (!container) return;
+  const container = $("#postsContainer");
+  if (!container || typeof getPosts !== "function") return;
 
   try {
-    if (typeof getPosts !== "function") return;
-
     const posts = await getPosts();
+    container.replaceChildren();
 
-    if (!posts || posts.length === 0) {
-      container.innerHTML =
-        '<p class="empty-state">لسه مفيش منشورات. كن أول من ينشر!</p>';
+    if (!posts?.length) {
+      container.textContent = "لسه مفيش منشورات. كن أول من ينشر!";
       return;
     }
 
-    container.replaceChildren();
-
-    posts.slice().reverse().forEach((post) => {
+    [...posts].reverse().forEach(post => {
       const card = document.createElement("article");
       card.className = "post-card";
 
@@ -160,7 +121,7 @@ async function loadPosts() {
       container.appendChild(card);
     });
   } catch (error) {
-    console.error("Loading posts failed:", error);
+    console.error("Posts:", error);
   }
 }
 
@@ -177,7 +138,7 @@ async function loadFriends() {
       return;
     }
 
-    friends.forEach((friend) => {
+    friends.forEach(friend => {
       const item = document.createElement("div");
       item.className = "friend-item";
       item.textContent = friend.name || "صديق";
@@ -201,7 +162,7 @@ async function loadNotifications() {
       return;
     }
 
-    notifications.forEach((notification) => {
+    notifications.forEach(notification => {
       const item = document.createElement("div");
       item.className = "notification-item";
       item.textContent =
@@ -216,23 +177,20 @@ async function loadNotifications() {
 function toggleTheme() {
   document.body.classList.toggle("dark-mode");
 
-  const enabled = document.body.classList.contains("dark-mode");
-  localStorage.setItem("connecto_theme", enabled ? "dark" : "light");
+  localStorage.setItem(
+    "connecto_theme",
+    document.body.classList.contains("dark-mode") ? "dark" : "light"
+  );
 }
 
 function loadTheme() {
-  const theme = localStorage.getItem("connecto_theme");
-
-  if (theme === "dark") {
+  if (localStorage.getItem("connecto_theme") === "dark") {
     document.body.classList.add("dark-mode");
   }
 }
 
-loadTheme();
-
 function logout() {
-  const confirmed = confirm("هل تريد تسجيل الخروج؟");
-  if (!confirmed) return;
+  if (!confirm("هل تريد تسجيل الخروج؟")) return;
 
   localStorage.removeItem("connecto_user");
   currentUser = null;
