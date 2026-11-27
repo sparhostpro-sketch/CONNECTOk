@@ -1,4 +1,3 @@
-
 // CONNECTO - Friends System
 
 async function sendFriendRequest(senderId, receiverId) {
