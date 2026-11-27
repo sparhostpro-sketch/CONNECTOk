@@ -1,4 +1,3 @@
-
 // CONNECTO - Search System
 
 async function searchUsers(query) {
