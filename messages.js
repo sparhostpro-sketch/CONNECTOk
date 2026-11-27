@@ -1,4 +1,3 @@
-
 // CONNECTO - Messaging System
 
 async function sendMessage(sender, receiver, content) {
