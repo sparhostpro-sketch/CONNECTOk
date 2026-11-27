@@ -1,4 +1,3 @@
-
 // CONNECTO - Settings System
 
 const DEFAULT_SETTINGS = {
