@@ -1,111 +1,103 @@
-// CONNECTO - Friends System
+// CONNECTO - User Profile System
 
-async function sendFriendRequest(senderId, receiverId) {
-    if (!senderId || !receiverId || senderId === receiverId) {
-        throw new Error("بيانات طلب الصداقة غير صحيحة");
+async function createProfile(userId, name, bio = "") {
+    if (!userId || !name) {
+        throw new Error("بيانات الحساب غير مكتملة");
+    }
+
+    const profile = {
+        userId,
+        name: name.trim(),
+        bio: bio.trim(),
+        avatar: "",
+        cover: "",
+        followers: [],
+        following: [],
+        createdAt: new Date().toISOString()
+    };
+
+    return await saveData("users", profile);
+}
+
+async function getProfile(userId) {
+    const users = await getAllData("users");
+
+    return users.find(user => user.userId === userId) || null;
+}
+
+async function updateProfile(userId, updates) {
+    const db = await openDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction("users", "readwrite");
+        const store = transaction.objectStore("users");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const users = request.result;
+
+            const profile = users.find(
+                user => user.userId === userId
+            );
+
+            if (!profile) {
+                reject(new Error("الحساب غير موجود"));
+                return;
+            }
+
+            profile.name = updates.name?.trim() || profile.name;
+            profile.bio = updates.bio?.trim() ?? profile.bio;
+            profile.avatar = updates.avatar ?? profile.avatar;
+            profile.cover = updates.cover ?? profile.cover;
+
+            store.put(profile);
+            resolve(profile);
+        };
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function followUser(currentUserId, targetUserId) {
+    if (currentUserId === targetUserId) {
+        throw new Error("لا يمكنك متابعة نفسك");
     }
 
     const db = await openDatabase();
 
     return new Promise((resolve, reject) => {
-        const transaction = db.transaction("friends", "readwrite");
-        const store = transaction.objectStore("friends");
-
+        const transaction = db.transaction("users", "readwrite");
+        const store = transaction.objectStore("users");
         const request = store.getAll();
 
-        request.onsuccess = () => {
-            const exists = request.result.some(item =>
-                (item.senderId === senderId &&
-                 item.receiverId === receiverId) ||
-                (item.senderId === receiverId &&
-                 item.receiverId === senderId)
+        request.onsuccess = function() {
+            const users = request.result;
+
+            const current = users.find(
+                user => user.userId === currentUserId
             );
 
-            if (exists) {
-                reject(new Error("يوجد طلب صداقة بالفعل"));
+            const target = users.find(
+                user => user.userId === targetUserId
+            );
+
+            if (!current || !target) {
+                reject(new Error("المستخدم غير موجود"));
                 return;
             }
 
-            const addRequest = store.add({
-                senderId,
-                receiverId,
-                status: "pending",
-                createdAt: new Date().toISOString()
-            });
+            current.following = current.following || [];
+            target.followers = target.followers || [];
 
-            addRequest.onsuccess = () => resolve(true);
-            addRequest.onerror = () => reject(addRequest.error);
-        };
-
-        request.onerror = () => reject(request.error);
-    });
-}
-
-async function getFriendRequests(userId) {
-    const db = await openDatabase();
-
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction("friends", "readonly");
-        const request = transaction.objectStore("friends").getAll();
-
-        request.onsuccess = () => {
-            resolve(request.result.filter(item =>
-                item.receiverId === userId &&
-                item.status === "pending"
-            ));
-        };
-
-        request.onerror = () => reject(request.error);
-    });
-}
-
-async function respondToFriendRequest(requestId, accepted) {
-    const db = await openDatabase();
-
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction("friends", "readwrite");
-        const store = transaction.objectStore("friends");
-        const request = store.get(requestId);
-
-        request.onsuccess = () => {
-            const item = request.result;
-
-            if (!item || item.status !== "pending") {
-                reject(new Error("طلب الصداقة غير موجود"));
-                return;
+            if (!current.following.includes(targetUserId)) {
+                current.following.push(targetUserId);
+                target.followers.push(currentUserId);
             }
 
-            item.status = accepted ? "accepted" : "rejected";
-            store.put(item);
+            store.put(current);
+            store.put(target);
 
-            resolve(item);
-        };
-
-        request.onerror = () => reject(request.error);
-    });
-}
-
-async function getFriends(userId) {
-    const db = await openDatabase();
-
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction("friends", "readonly");
-        const request = transaction.objectStore("friends").getAll();
-
-        request.onsuccess = () => {
-            const friends = request.result
-                .filter(item =>
-                    item.status === "accepted" &&
-                    (item.senderId === userId ||
-                     item.receiverId === userId)
-                )
-                .map(item =>
-                    item.senderId === userId
-                        ? item.receiverId
-                        : item.senderId
-                );
-
-            resolve(friends);
+            resolve(true);
         };
 
         request.onerror = () => reject(request.error);
