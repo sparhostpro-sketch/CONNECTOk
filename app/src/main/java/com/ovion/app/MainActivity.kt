@@ -1,7 +1,9 @@
+
 package com.ovion.app
 
 import android.os.Bundle
 import android.content.Context
+import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -30,6 +32,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 private val blue = Color(0xFF1877F2)
+
 private val client = OkHttpClient.Builder()
     .connectTimeout(20, TimeUnit.SECONDS)
     .readTimeout(30, TimeUnit.SECONDS)
@@ -370,7 +373,7 @@ fun OvionApp(
 
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -637,12 +640,43 @@ object OvionApi {
         }
     }
 
+    // استخراج رقم المستخدم من رمز تسجيل الدخول
+    private fun getUserIdFromToken(token: String): String? {
+        return try {
+            val parts = token.split(".")
+            if (parts.size < 2) return null
+
+            val decoded = Base64.decode(
+                parts[1],
+                Base64.URL_SAFE or
+                    Base64.NO_PADDING or
+                    Base64.NO_WRAP
+            )
+
+            JSONObject(String(decoded, Charsets.UTF_8))
+                .optString("sub")
+                .takeIf { it.isNotBlank() }
+
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun createPost(
         token: String,
         content: String,
         callback: (String?) -> Unit
     ) {
+        val userId = getUserIdFromToken(token)
+
+        if (userId == null) {
+            callback("تعذر تحديد حساب المستخدم. سجّل الدخول مرة أخرى.")
+            return
+        }
+
+        // إرسال author_id مع محتوى المنشور
         val body = JSONObject()
+            .put("author_id", userId)
             .put("content", content)
 
         val request = Request.Builder()
@@ -669,10 +703,14 @@ object OvionApi {
                     response: Response
                 ) {
                     response.use {
-                        callback(
-                            if (it.isSuccessful) null
-                            else "تعذر نشر المنشور"
-                        )
+                        if (it.isSuccessful) {
+                            callback(null)
+                        } else {
+                            val errorText =
+                                it.body?.string().orEmpty()
+
+                            callback(parseError(errorText))
+                        }
                     }
                 }
             }
