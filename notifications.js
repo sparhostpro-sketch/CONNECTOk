@@ -1,4 +1,3 @@
-
 // CONNECTO - Notifications System
 
 async function createNotification(userId, type, message, fromUser = "") {
@@ -96,4 +95,4 @@ async function deleteNotification(notificationId) {
         request.onsuccess = () => resolve(true);
         request.onerror = () => reject(request.error);
     });
-}
+                       }
