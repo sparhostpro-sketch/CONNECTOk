@@ -1,4 +1,3 @@
-
 const $ = (selector) => document.querySelector(selector);
 
 let currentSection = "home";
