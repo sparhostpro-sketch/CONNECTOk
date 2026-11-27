@@ -1,4 +1,3 @@
-
 const CACHE_NAME = "connecto-v1";
 
 const FILES_TO_CACHE = [
