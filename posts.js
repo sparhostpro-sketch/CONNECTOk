@@ -1,4 +1,3 @@
-
 // CONNECTO - Posts System
 
 async function createPost(author, content) {
