@@ -136,7 +136,7 @@ object Api {
 
     // ---------- posts ----------
     private const val POST_SEL =
-        "id,author_id,content,image_url,created_at,likes_count,comments_count,shares_count,profiles(display_name,username,avatar_url)"
+        "id,author_id,content,image_url,created_at,likes_count,comments_count,shares_count,profiles!author_id(display_name,username,avatar_url)"
     const val ORDER_NEW = "created_at.desc"
     const val ORDER_TOP = "likes_count.desc,comments_count.desc,created_at.desc"
 
@@ -180,7 +180,7 @@ object Api {
 
     // ---------- comments ----------
     suspend fun comments(postId: String): List<Comment> = Parse.comments(
-        req("GET", "/rest/v1/comments?select=id,post_id,author_id,parent_id,content,created_at,profiles(display_name,avatar_url)&post_id=eq.$postId&order=created_at.asc&limit=300")
+        req("GET", "/rest/v1/comments?select=id,post_id,author_id,parent_id,content,created_at,profiles!author_id(display_name,avatar_url)&post_id=eq.$postId&order=created_at.asc&limit=300")
     )
 
     suspend fun addComment(postId: String, content: String, parentId: String?) {
@@ -267,7 +267,7 @@ object Api {
 
     // ---------- notifications ----------
     suspend fun notifications(): List<Notif> = Parse.notifs(
-        req("GET", "/rest/v1/notifications?select=id,type,post_id,read_at,created_at,actor_id,actor:profiles!notifications_actor_id_fkey(display_name,avatar_url)&user_id=eq.$uid&order=created_at.desc&limit=60")
+        req("GET", "/rest/v1/notifications?select=id,type,post_id,read_at,created_at,actor_id,actor:profiles!actor_id(display_name,avatar_url)&user_id=eq.$uid&order=created_at.desc&limit=60")
     )
 
     suspend fun unreadNotifications(): Int =
