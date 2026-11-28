@@ -95,4 +95,4 @@ async function deleteNotification(notificationId) {
         request.onsuccess = () => resolve(true);
         request.onerror = () => reject(request.error);
     });
-                       }
+}
