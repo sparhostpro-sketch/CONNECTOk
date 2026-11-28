@@ -1,4 +1,3 @@
-
 // CONNECTO - Authentication Interface
 
 function validateRegistration(name, email, password) {
