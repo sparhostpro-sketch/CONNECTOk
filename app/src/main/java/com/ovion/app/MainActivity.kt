@@ -1,719 +1,150 @@
-
 package com.ovion.app
 
-import android.os.Bundle
 import android.content.Context
-import android.util.Base64
+import android.content.SharedPreferences
+import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.IOException
-import java.util.concurrent.TimeUnit
-
-private val blue = Color(0xFF1877F2)
-
-private val client = OkHttpClient.Builder()
-    .connectTimeout(20, TimeUnit.SECONDS)
-    .readTimeout(30, TimeUnit.SECONDS)
-    .build()
-
-private const val BASE_URL =
-    "https://ypkqwpqkhpdvkaqmwxuw.supabase.co"
-
-private const val API_KEY =
-    "sb_publishable_RrCdbXePOnQGRZsxi53C6A_00jjgW6B"
-
-data class OvionPost(
-    val id: String,
-    val content: String,
-    val author: String,
-    val date: String
-)
+import androidx.compose.ui.graphics.vector.ImageVector
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        enableEdgeToEdge()
         val prefs = getSharedPreferences("ovion", Context.MODE_PRIVATE)
-
-        setContent {
-            MaterialTheme(
-                colorScheme = lightColorScheme(
-                    primary = blue,
-                    background = Color(0xFFF0F2F5)
-                )
-            ) {
-                OvionApp(
-                    prefs = prefs,
-                    context = this
-                )
-            }
-        }
+        setContent { OvionTheme { OvionRoot(prefs) } }
     }
+}
+
+private fun loadSession(p: SharedPreferences): Session? {
+    val token = p.getString("token", "").orEmpty()
+    if (token.isBlank()) return null
+    val uid = p.getString("uid", null) ?: Api.userIdFromToken(token) ?: return null
+    return Session(token, p.getString("refresh", "").orEmpty(), uid)
+}
+
+private fun saveSession(p: SharedPreferences, s: Session?) {
+    val e = p.edit()
+    if (s == null) e.remove("token").remove("refresh").remove("uid")
+    else e.putString("token", s.accessToken).putString("refresh", s.refreshToken).putString("uid", s.userId)
+    e.apply()
 }
 
 @Composable
-fun OvionApp(
-    prefs: android.content.SharedPreferences,
-    context: Context
-) {
-    var token by remember {
-        mutableStateOf(prefs.getString("token", "") ?: "")
+fun OvionRoot(prefs: SharedPreferences) {
+    var session by remember { mutableStateOf(loadSession(prefs).also { Api.session = it }) }
+
+    DisposableEffect(Unit) {
+        Api.onSessionChanged = { s -> saveSession(prefs, s); session = s }
+        onDispose { Api.onSessionChanged = null }
     }
 
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var displayName by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
-
-    var isRegister by remember { mutableStateOf(false) }
-    var loading by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("") }
-
-    var posts by remember { mutableStateOf(listOf<OvionPost>()) }
-
-    fun showMessage(value: String) {
-        message = value
-    }
-
-    fun loadFeed() {
-        if (token.isBlank()) return
-
-        loading = true
-
-        OvionApi.getPosts(token) { result, error ->
-            loading = false
-
-            if (error != null) {
-                showMessage(error)
-            } else {
-                posts = result ?: emptyList()
-            }
-        }
-    }
-
-    fun saveToken(value: String) {
-        token = value
-        prefs.edit().putString("token", value).apply()
-        loadFeed()
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFF0F2F5))
-    ) {
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.White)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "OVION",
-                color = blue,
-                fontSize = 27.sp
-            )
-
-            Spacer(Modifier.weight(1f))
-
-            Text(
-                "أوفيون",
-                fontSize = 20.sp
-            )
-        }
-
-        if (token.isBlank()) {
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(22.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-
-                Text(
-                    "مرحباً بك في OVION",
-                    fontSize = 25.sp,
-                    color = blue
-                )
-
-                Spacer(Modifier.height(24.dp))
-
-                if (isRegister) {
-                    OutlinedTextField(
-                        value = displayName,
-                        onValueChange = { displayName = it },
-                        label = { Text("الاسم") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-                }
-
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text("البريد الإلكتروني") },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Email
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(10.dp))
-
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("كلمة المرور") },
-                    visualTransformation =
-                        PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(18.dp))
-
-                Button(
-                    onClick = {
-                        if (
-                            email.isBlank() ||
-                            password.length < 8 ||
-                            (isRegister && displayName.isBlank())
-                        ) {
-                            showMessage("تأكد من إدخال البيانات بشكل صحيح")
-                            return@Button
-                        }
-
-                        loading = true
-                        message = ""
-
-                        if (isRegister) {
-                            OvionApi.register(
-                                email,
-                                password,
-                                displayName
-                            ) { result, error ->
-                                loading = false
-
-                                if (result != null) {
-                                    if (result.isNotBlank()) {
-                                        saveToken(result)
-                                        showMessage("تم إنشاء الحساب")
-                                    } else {
-                                        showMessage(
-                                            "تم التسجيل. راجع بريدك الإلكتروني لتأكيد الحساب ثم سجّل الدخول."
-                                        )
-                                        isRegister = false
-                                    }
-                                } else {
-                                    showMessage(error ?: "تعذر التسجيل")
-                                }
-                            }
-                        } else {
-                            OvionApi.login(
-                                email,
-                                password
-                            ) { result, error ->
-                                loading = false
-
-                                if (result != null) {
-                                    saveToken(result)
-                                    showMessage("تم تسجيل الدخول")
-                                } else {
-                                    showMessage(error ?: "تعذر تسجيل الدخول")
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !loading
-                ) {
-                    Text(
-                        if (loading) "يرجى الانتظار..."
-                        else if (isRegister) "إنشاء حساب"
-                        else "تسجيل الدخول"
-                    )
-                }
-
-                TextButton(
-                    onClick = {
-                        isRegister = !isRegister
-                        message = ""
-                    }
-                ) {
-                    Text(
-                        if (isRegister)
-                            "لديك حساب؟ تسجيل الدخول"
-                        else
-                            "ليس لديك حساب؟ إنشاء حساب"
-                    )
-                }
-
-                if (message.isNotBlank()) {
-                    Text(
-                        message,
-                        color = blue,
-                        modifier = Modifier.padding(8.dp)
-                    )
-                }
-            }
-
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+      Box(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
+        val s = session
+        if (s == null) {
+            AuthScreen { n -> Api.session = n; saveSession(prefs, n); session = n }
         } else {
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "آخر المنشورات",
-                    fontSize = 21.sp
-                )
-
-                TextButton(
-                    onClick = { loadFeed() }
-                ) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = "تحديث"
-                    )
-                    Text("تحديث")
-                }
-            }
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp)
-                ) {
-                    OutlinedTextField(
-                        value = content,
-                        onValueChange = { content = it },
-                        placeholder = {
-                            Text("بماذا تفكر؟")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 2
-                    )
-
-                    Button(
-                        onClick = {
-                            if (content.isBlank()) {
-                                showMessage("اكتب شيئاً أولاً")
-                                return@Button
-                            }
-
-                            loading = true
-
-                            OvionApi.createPost(
-                                token,
-                                content
-                            ) { error ->
-                                loading = false
-
-                                if (error == null) {
-                                    content = ""
-                                    showMessage("تم نشر المنشور")
-                                    loadFeed()
-                                } else {
-                                    showMessage(error)
-                                }
-                            }
-                        },
-                        modifier = Modifier.align(Alignment.End),
-                        enabled = !loading
-                    ) {
-                        Text("نشر")
-                    }
-                }
-            }
-
-            if (message.isNotBlank()) {
-                Text(
-                    message,
-                    color = blue,
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
-
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(posts) { post ->
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp)
-                        ) {
-                            Text(
-                                post.author,
-                                color = blue,
-                                fontSize = 17.sp
-                            )
-
-                            Spacer(Modifier.height(10.dp))
-
-                            Text(
-                                post.content,
-                                fontSize = 16.sp,
-                                lineHeight = 25.sp
-                            )
-
-                            Spacer(Modifier.height(12.dp))
-
-                            Text(
-                                post.date,
-                                color = Color.Gray,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                }
-            }
-
-            Button(
-                onClick = {
-                    prefs.edit().remove("token").apply()
-                    token = ""
-                    posts = emptyList()
-                    message = ""
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp)
-            ) {
-                Icon(
-                    Icons.Default.Logout,
-                    contentDescription = null
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("تسجيل الخروج")
-            }
+            key(s.userId) { MainApp(onLogout = { Api.session = null; saveSession(prefs, null); session = null }) }
         }
+      }
     }
 }
 
-object OvionApi {
+private data class Tab(val label: String, val icon: ImageVector)
 
-    private val jsonType =
-        "application/json; charset=utf-8".toMediaType()
+@Composable
+fun MainApp(onLogout: () -> Unit) {
+    val app = remember { AppState() }
+    var tab by remember { mutableIntStateOf(0) }
+    val tabs = listOf(
+        Tab("الرئيسية", Icons.Default.Home),
+        Tab("استكشاف", Icons.Default.Search),
+        Tab("نشر", Icons.Default.AddCircle),
+        Tab("الإشعارات", Icons.Default.Notifications),
+        Tab("حسابي", Icons.Default.Person)
+    )
 
-    private fun request(
-        path: String,
-        method: String,
-        body: JSONObject? = null,
-        token: String? = null,
-        callback: (String?, String?) -> Unit
-    ) {
-        val builder = Request.Builder()
-            .url("$BASE_URL$path")
-            .addHeader("apikey", API_KEY)
-
-        if (!token.isNullOrBlank()) {
-            builder.addHeader(
-                "Authorization",
-                "Bearer $token"
-            )
+    // بيانات المستخدم الأساسية
+    LaunchedEffect(Unit) {
+        (safe { Api.profile(Api.uid) } as? Load.Ok)?.let { app.me = it.v }
+        (safe { Api.likedPostIds() } as? Load.Ok)?.let { r -> r.v.forEach { app.liked[it] = true } }
+        (safe { Api.followingIds() } as? Load.Ok)?.let { r -> r.v.forEach { app.following[it] = true } }
+    }
+    // عدادات غير المقروء (تحديث دوري كل 15 ثانية)
+    LaunchedEffect(Unit) {
+        while (true) {
+            (safe { Api.unreadNotifications() } as? Load.Ok)?.let { if (tab != 3) app.unreadNotifs = it.v }
+            (safe { Api.unreadMessages() } as? Load.Ok)?.let { app.unreadMsgs = it.v }
+            delay(15000)
         }
+    }
 
-        if (body != null) {
-            builder.addHeader("Content-Type", "application/json")
-        }
+    BackHandler(enabled = app.stack.isNotEmpty() || tab != 0) {
+        if (app.stack.isNotEmpty()) app.pop() else tab = 0
+    }
 
-        when (method) {
-            "POST" -> builder.post(
-                (body?.toString() ?: "{}").toRequestBody(jsonType)
-            )
-
-            "GET" -> builder.get()
-
-            else -> builder.get()
-        }
-
-        client.newCall(builder.build()).enqueue(
-            object : Callback {
-
-                override fun onFailure(
-                    call: Call,
-                    e: IOException
-                ) {
-                    callback(
-                        null,
-                        "تعذر الاتصال بالإنترنت"
-                    )
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                when (tab) {
+                    0 -> HomeScreen(app)
+                    1 -> SearchScreen(app)
+                    2 -> ComposeScreen(app) { tab = 0 }
+                    3 -> NotificationsScreen(app)
+                    else -> ProfileScreen(Api.uid, app, isTab = true, onLogout = onLogout)
                 }
-
-                override fun onResponse(
-                    call: Call,
-                    response: Response
-                ) {
-                    response.use {
-                        val text = it.body?.string().orEmpty()
-
-                        if (it.isSuccessful) {
-                            callback(text, null)
-                        } else {
-                            callback(
-                                null,
-                                parseError(text)
-                            )
+            }
+            NavigationBar {
+                tabs.forEachIndexed { i, t ->
+                    NavigationBarItem(
+                        selected = tab == i,
+                        onClick = { tab = i; if (i == 3) app.unreadNotifs = 0 },
+                        label = { Text(t.label) },
+                        icon = {
+                            BadgedBox(badge = { if (i == 3 && app.unreadNotifs > 0) Badge { Text("${app.unreadNotifs}") } }) {
+                                Icon(t.icon, t.label)
+                            }
                         }
-                    }
-                }
-            }
-        )
-    }
-
-    private fun parseError(text: String): String {
-        return try {
-            val obj = JSONObject(text)
-            obj.optString(
-                "msg",
-                obj.optString(
-                    "message",
-                    obj.optString(
-                        "error_description",
-                        "حدث خطأ، حاول مرة أخرى"
-                    )
-                )
-            )
-        } catch (_: Exception) {
-            "حدث خطأ، حاول مرة أخرى"
-        }
-    }
-
-    fun register(
-        email: String,
-        password: String,
-        name: String,
-        callback: (String?, String?) -> Unit
-    ) {
-        val body = JSONObject()
-            .put("email", email)
-            .put("password", password)
-            .put(
-                "data",
-                JSONObject().put("display_name", name)
-            )
-
-        request(
-            "/auth/v1/signup",
-            "POST",
-            body
-        ) { response, error ->
-
-            if (response == null) {
-                callback(null, error)
-                return@request
-            }
-
-            try {
-                val obj = JSONObject(response)
-                callback(
-                    obj.optString("access_token"),
-                    null
-                )
-            } catch (_: Exception) {
-                callback(null, "تعذر قراءة نتيجة التسجيل")
-            }
-        }
-    }
-
-    fun login(
-        email: String,
-        password: String,
-        callback: (String?, String?) -> Unit
-    ) {
-        val body = JSONObject()
-            .put("email", email)
-            .put("password", password)
-
-        request(
-            "/auth/v1/token?grant_type=password",
-            "POST",
-            body
-        ) { response, error ->
-
-            if (response == null) {
-                callback(null, error)
-                return@request
-            }
-
-            try {
-                callback(
-                    JSONObject(response).optString("access_token"),
-                    null
-                )
-            } catch (_: Exception) {
-                callback(null, "تعذر تسجيل الدخول")
-            }
-        }
-    }
-
-    fun getPosts(
-        token: String,
-        callback: (List<OvionPost>?, String?) -> Unit
-    ) {
-        request(
-            "/rest/v1/posts?select=id,content,created_at,profiles(display_name,username)&order=created_at.desc",
-            "GET",
-            token = token
-        ) { response, error ->
-
-            if (response == null) {
-                callback(null, error)
-                return@request
-            }
-
-            try {
-                val array = JSONArray(response)
-                val result = mutableListOf<OvionPost>()
-
-                for (i in 0 until array.length()) {
-                    val item = array.getJSONObject(i)
-                    val profile = item.optJSONObject("profiles")
-
-                    result.add(
-                        OvionPost(
-                            id = item.optString("id"),
-                            content = item.optString("content"),
-                            author = profile?.optString("display_name")
-                                ?.takeIf { !it.isNullOrBlank() }
-                                ?: "مستخدم OVION",
-                            date = item.optString("created_at")
-                        )
                     )
                 }
-
-                callback(result, null)
-
-            } catch (_: Exception) {
-                callback(
-                    null,
-                    "تعذر تحميل المنشورات"
-                )
             }
         }
-    }
 
-    // استخراج رقم المستخدم من رمز تسجيل الدخول
-    private fun getUserIdFromToken(token: String): String? {
-        return try {
-            val parts = token.split(".")
-            if (parts.size < 2) return null
-
-            val decoded = Base64.decode(
-                parts[1],
-                Base64.URL_SAFE or
-                    Base64.NO_PADDING or
-                    Base64.NO_WRAP
-            )
-
-            JSONObject(String(decoded, Charsets.UTF_8))
-                .optString("sub")
-                .takeIf { it.isNotBlank() }
-
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    fun createPost(
-        token: String,
-        content: String,
-        callback: (String?) -> Unit
-    ) {
-        val userId = getUserIdFromToken(token)
-
-        if (userId == null) {
-            callback("تعذر تحديد حساب المستخدم. سجّل الدخول مرة أخرى.")
-            return
-        }
-
-        // إرسال author_id مع محتوى المنشور
-        val body = JSONObject()
-            .put("author_id", userId)
-            .put("content", content)
-
-        val request = Request.Builder()
-            .url("$BASE_URL/rest/v1/posts")
-            .addHeader("apikey", API_KEY)
-            .addHeader("Authorization", "Bearer $token")
-            .addHeader("Content-Type", "application/json")
-            .addHeader("Prefer", "return=minimal")
-            .post(body.toString().toRequestBody(jsonType))
-            .build()
-
-        client.newCall(request).enqueue(
-            object : Callback {
-
-                override fun onFailure(
-                    call: Call,
-                    e: IOException
-                ) {
-                    callback("تعذر الاتصال بالإنترنت")
-                }
-
-                override fun onResponse(
-                    call: Call,
-                    response: Response
-                ) {
-                    response.use {
-                        if (it.isSuccessful) {
-                            callback(null)
-                        } else {
-                            val errorText =
-                                it.body?.string().orEmpty()
-
-                            callback(parseError(errorText))
-                        }
-                    }
+        // صفحات فوق التبويبات (ملف مستخدم، منشور، رسائل...)
+        AnimatedContent(
+            targetState = app.stack.lastOrNull(),
+            transitionSpec = {
+                if (targetState != null) (slideInHorizontally { -it / 4 } + fadeIn()) togetherWith fadeOut()
+                else fadeIn() togetherWith (slideOutHorizontally { -it / 4 } + fadeOut())
+            },
+            label = "route"
+        ) { r ->
+            if (r != null) Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
+                when (r) {
+                    Route.Inbox -> InboxScreen(app)
+                    Route.EditProfile -> EditProfileScreen(app)
+                    is Route.User -> ProfileScreen(r.id, app, isTab = false, onLogout = onLogout)
+                    is Route.PostDetail -> PostDetailScreen(r.post, app)
+                    is Route.Chat -> ChatScreen(r.peer, app)
                 }
             }
-        )
+        }
     }
 }
