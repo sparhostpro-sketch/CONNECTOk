@@ -1,234 +1,95 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+// CONNECTO - Posts System
 
-:root {
-    --primary: #1877f2;
-    --background: #f0f2f5;
-    --surface: #ffffff;
-    --text: #1c1e21;
-    --muted: #65676b;
-    --border: #e4e6eb;
-}
-
-body {
-    font-family: Arial, sans-serif;
-    background: var(--background);
-    color: var(--text);
-    direction: rtl;
-    min-height: 100vh;
-}
-
-body.dark-mode {
-    --background: #18191a;
-    --surface: #242526;
-    --text: #e4e6eb;
-    --muted: #b0b3b8;
-    --border: #3a3b3c;
-}
-
-button, input, textarea {
-    font-family: inherit;
-}
-
-button {
-    cursor: pointer;
-    border: none;
-}
-
-.topbar {
-    height: 65px;
-    background: var(--surface);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 20px;
-    box-shadow: 0 2px 8px #0001;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-.brand {
-    color: var(--primary);
-    font-size: 25px;
-    font-weight: bold;
-    letter-spacing: 1px;
-}
-
-.topbar input {
-    flex: 1;
-    max-width: 450px;
-    padding: 12px 16px;
-    border-radius: 25px;
-    border: 1px solid var(--border);
-    background: var(--background);
-    color: var(--text);
-    outline: none;
-}
-
-.topbar button {
-    background: var(--background);
-    color: var(--text);
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    font-size: 19px;
-}
-
-.layout {
-    display: flex;
-    max-width: 1250px;
-    margin: 20px auto;
-    gap: 20px;
-    padding: 0 15px;
-}
-
-.sidebar {
-    width: 230px;
-    flex-shrink: 0;
-    background: var(--surface);
-    padding: 15px;
-    border-radius: 14px;
-    height: fit-content;
-}
-
-.sidebar button {
-    width: 100%;
-    text-align: right;
-    padding: 14px 12px;
-    margin-bottom: 5px;
-    background: transparent;
-    color: var(--text);
-    border-radius: 9px;
-    font-size: 15px;
-}
-
-.sidebar button:hover {
-    background: var(--background);
-    color: var(--primary);
-}
-
-.main-content {
-    flex: 1;
-    min-width: 0;
-}
-
-.page {
-    display: none;
-    background: var(--surface);
-    padding: 22px;
-    border-radius: 14px;
-    margin-bottom: 20px;
-}
-
-.page.active {
-    display: block;
-}
-
-.page h2 {
-    margin-bottom: 20px;
-    font-size: 22px;
-}
-
-.create-post {
-    padding: 15px;
-    background: var(--background);
-    border-radius: 12px;
-    margin-bottom: 20px;
-}
-
-.create-post textarea {
-    width: 100%;
-    min-height: 100px;
-    padding: 15px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    resize: vertical;
-    outline: none;
-    background: var(--surface);
-    color: var(--text);
-    font-size: 16px;
-}
-
-.create-post button,
-.page button {
-    background: var(--primary);
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    margin-top: 10px;
-}
-
-.post-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 18px;
-    margin-bottom: 15px;
-}
-
-.post-card p {
-    line-height: 1.8;
-    margin: 12px 0;
-}
-
-.post-actions {
-    border-top: 1px solid var(--border);
-    padding-top: 10px;
-    display: flex;
-    gap: 10px;
-}
-
-footer {
-    text-align: center;
-    padding: 25px;
-    color: var(--muted);
-}
-
-@media (max-width: 700px) {
-    .topbar {
-        padding: 10px;
-        gap: 7px;
+async function createPost(author, content) {
+    if (!content || !content.trim()) {
+        throw new Error("اكتب شيئاً قبل نشر المنشور");
     }
 
-    .brand {
-        font-size: 19px;
+    const post = {
+        author: author || "مستخدم CONNECTO",
+        content: content.trim(),
+        likes: [],
+        comments: [],
+        createdAt: new Date().toISOString()
+    };
+
+    return await saveData("posts", post);
+}
+
+async function getFeed() {
+    const posts = await getAllData("posts");
+
+    return posts.sort((a, b) =>
+        new Date(b.createdAt) - new Date(a.createdAt)
+    );
+}
+
+async function toggleLike(postId, userId) {
+    const db = await openDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction("posts", "readwrite");
+        const store = transaction.objectStore("posts");
+        const request = store.get(postId);
+
+        request.onsuccess = function() {
+            const post = request.result;
+
+            if (!post) {
+                reject(new Error("المنشور غير موجود"));
+                return;
+            }
+
+            post.likes = post.likes || [];
+
+            const index = post.likes.indexOf(userId);
+
+            if (index === -1) {
+                post.likes.push(userId);
+            } else {
+                post.likes.splice(index, 1);
+            }
+
+            store.put(post);
+            resolve(post.likes.length);
+        };
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function addComment(postId, author, content) {
+    if (!content || !content.trim()) {
+        throw new Error("اكتب تعليقاً أولاً");
     }
 
-    .topbar input {
-        min-width: 0;
-        font-size: 12px;
-        padding: 10px;
-    }
+    const db = await openDatabase();
 
-    .layout {
-        display: block;
-        margin: 10px auto;
-        padding: 0 10px;
-    }
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction("posts", "readwrite");
+        const store = transaction.objectStore("posts");
+        const request = store.get(postId);
 
-    .sidebar {
-        width: 100%;
-        display: flex;
-        overflow-x: auto;
-        gap: 5px;
-        padding: 8px;
-        margin-bottom: 12px;
-    }
+        request.onsuccess = function() {
+            const post = request.result;
 
-    .sidebar button {
-        width: auto;
-        white-space: nowrap;
-        margin: 0;
-        padding: 11px;
-        font-size: 13px;
-    }
+            if (!post) {
+                reject(new Error("المنشور غير موجود"));
+                return;
+            }
 
-    .page {
-        padding: 15px;
-    }
+            post.comments = post.comments || [];
+
+            post.comments.push({
+                author: author || "مستخدم CONNECTO",
+                content: content.trim(),
+                createdAt: new Date().toISOString()
+            });
+
+            store.put(post);
+            resolve(post);
+        };
+
+        request.onerror = () => reject(request.error);
+    });
 }
